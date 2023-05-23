@@ -61,6 +61,7 @@ const createClientMatchData = (
 ): LobbyAPI.Match => {
   return {
     ...metadata,
+    password: !!metadata.password,
     matchID,
     players: Object.values(metadata.players).map((player) => {
       // strip away credentials
@@ -115,6 +116,8 @@ export const configureRouter = ({
     const setupData = ctx.request.body.setupData;
     // Whether the game should be excluded from public listing.
     const unlisted = ctx.request.body.unlisted;
+    // Password required to join game
+    const password = ctx.request.body.password;
     // The number of players for this game instance.
     const numPlayers = Number.parseInt(ctx.request.body.numPlayers);
 
@@ -138,6 +141,7 @@ export const configureRouter = ({
       setupData,
       uuid,
       unlisted,
+      password,
     });
 
     const body: LobbyAPI.CreatedMatch = { matchID };
@@ -233,6 +237,7 @@ export const configureRouter = ({
   router.post('/games/:name/:id/join', koaBody(), async (ctx) => {
     let playerID = ctx.request.body.playerID;
     const playerName = ctx.request.body.playerName;
+    const password = ctx.request.body.password;
     const data = ctx.request.body.data;
     const matchID = ctx.params.id;
     if (!playerName) {
@@ -244,6 +249,10 @@ export const configureRouter = ({
     });
     if (!metadata) {
       ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+
+    if (metadata.password && password !== metadata.password) {
+      ctx.throw(401, 'Match password is missing or does not match');
     }
 
     if (typeof playerID === 'undefined' || playerID === null) {

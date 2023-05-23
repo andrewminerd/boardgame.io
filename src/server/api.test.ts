@@ -324,6 +324,25 @@ describe('.configureRouter', () => {
           );
         });
       });
+
+      describe('with password', () => {
+        beforeEach(async () => {
+          response = await request(app.callback())
+            .post('/games/foo/create')
+            .send({ password: 'password!' });
+        });
+
+        test('sets password in metadata', () => {
+          expect(db.mocks.createMatch).toHaveBeenCalledWith(
+            'matchID',
+            expect.objectContaining({
+              metadata: expect.objectContaining({
+                password: 'password!',
+              }),
+            })
+          );
+        });
+      });
     });
 
     describe('for a protected lobby', () => {
@@ -576,6 +595,62 @@ describe('.configureRouter', () => {
           });
           test('throws error 409', async () => {
             expect(response.status).toEqual(409);
+          });
+        });
+      });
+
+      describe('when the game has a password', () => {
+        beforeEach(async () => {
+          db = new AsyncStorage({
+            fetch: async () => {
+              return {
+                metadata: {
+                  players: {
+                    '0': {},
+                  },
+                  password: 'password!',
+                },
+              };
+            },
+          });
+        });
+
+        describe('when password is omitted', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/join')
+              .send({ playerName: 'bob' });
+          });
+
+          test('throws error 401', async () => {
+            expect(response.status).toEqual(401);
+          });
+        });
+
+        describe('when password is incorrect', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/join')
+              .send({ playerName: 'bob', password: 'wrong' });
+          });
+
+          test('throws error 401', async () => {
+            expect(response.status).toEqual(401);
+          });
+        });
+
+        describe('when password is provided and correct', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/join')
+              .send({ playerName: 'bob', password: 'password!' });
+          });
+
+          test('is successful', async () => {
+            expect(response.status).toEqual(200);
           });
         });
       });

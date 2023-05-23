@@ -395,6 +395,7 @@ export namespace Server {
     gameover?: any;
     nextMatchID?: string;
     unlisted?: boolean;
+    password?: string;
     createdAt: number;
     updatedAt: number;
   }
@@ -410,8 +411,9 @@ export namespace Server {
 export namespace LobbyAPI {
   export type GameList = string[];
   type PublicPlayerMetadata = Omit<Server.PlayerMetadata, 'credentials'>;
-  export type Match = Omit<Server.MatchData, 'players'> & {
+  export type Match = Omit<Server.MatchData, 'password' | 'players'> & {
     matchID: string;
+    password: boolean;
     players: PublicPlayerMetadata[];
   };
   export interface MatchList {

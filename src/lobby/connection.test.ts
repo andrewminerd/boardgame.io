@@ -20,6 +20,7 @@ describe('lobby', () => {
       gameName: 'game1',
       matchID: 'matchID_1',
       players: [{ id: 0 }],
+      password: false,
       createdAt: 1,
       updatedAt: 4,
     };
@@ -27,6 +28,7 @@ describe('lobby', () => {
       gameName: 'game2',
       matchID: 'matchID_2',
       players: [{ id: 1 }],
+      password: false,
       createdAt: 2,
       updatedAt: 3,
     };
