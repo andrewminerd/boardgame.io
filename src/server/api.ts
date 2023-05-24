@@ -225,6 +225,49 @@ export const configureRouter = ({
   });
 
   /**
+   * Generate an invite to a specific match.
+   * @param {string} name - The name of the game.
+   * @param {string} id - The ID of the match.
+   * @return - Player ID and credentials to use when joining the match.
+   */
+  router.post('/games/:name/:id/invite', async (ctx) => {
+    let playerID = ctx.request.body.playerID;
+    // do we need to check password?
+    const password = ctx.request.body.password;
+    const matchID = ctx.params.id;
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+
+    if (typeof playerID === 'undefined' || playerID === null) {
+      playerID = getFirstAvailablePlayerID(metadata.players);
+      if (playerID === undefined) {
+        ctx.throw(409, 'Match is full');
+      }
+    }
+
+    if (!metadata.players[playerID]) {
+      ctx.throw(404, 'Player ' + playerID + ' not found');
+    }
+    if (metadata.players[playerID].name) {
+      ctx.throw(409, 'Player ' + playerID + ' not available');
+    }
+    if (metadata.players[playerID].invite) {
+      ctx.throw('401', 'Player ' + playerID + ' has pending invite');
+    }
+
+    const invite = await auth.generateCredentials(ctx);
+    metadata.players[playerID].invite = invite
+
+    const body: LobbyAPI.CreatedInvite = { playerID, invite };
+    ctx.body = body;
+  });
+
+  /**
    * Join a given match.
    *
    * @param {string} name - The name of the game.
@@ -239,6 +282,7 @@ export const configureRouter = ({
     const playerName = ctx.request.body.playerName;
     const password = ctx.request.body.password;
     const data = ctx.request.body.data;
+    const invite = ctx.request.body.invite;
     const matchID = ctx.params.id;
     if (!playerName) {
       ctx.throw(403, 'playerName is required');
@@ -272,6 +316,9 @@ export const configureRouter = ({
     if (metadata.players[playerID].name) {
       ctx.throw(409, 'Player ' + playerID + ' not available');
     }
+    if (metadata.players[playerID].invite && invite !== metadata.players[playerID].invite) {
+      ctx.throw(403, 'Invalid invite ' + invite);
+    }
 
     if (data) {
       metadata.players[playerID].data = data;
@@ -279,6 +326,7 @@ export const configureRouter = ({
     metadata.players[playerID].name = playerName;
     const playerCredentials = await auth.generateCredentials(ctx);
     metadata.players[playerID].credentials = playerCredentials;
+    delete metadata.players[playerID].invite;
 
     await db.setMetadata(matchID, metadata);
 
@@ -323,6 +371,7 @@ export const configureRouter = ({
 
     delete metadata.players[playerID].name;
     delete metadata.players[playerID].credentials;
+    delete metadata.players[playerID].data;
     const hasPlayers = Object.values(metadata.players).some(({ name }) => name);
     await (hasPlayers
       ? db.setMetadata(matchID, metadata) // Update metadata.

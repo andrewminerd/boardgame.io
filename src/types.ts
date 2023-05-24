@@ -383,6 +383,7 @@ export namespace Server {
   export type PlayerMetadata = {
     id: number;
     name?: string;
+    invite?: string;
     credentials?: string;
     data?: any;
     isConnected?: boolean;
@@ -421,6 +422,11 @@ export namespace LobbyAPI {
   }
   export interface CreatedMatch {
     matchID: string;
+    adminCredentials: string;
+  }
+  export interface CreatedInvite {
+    playerID: string;
+    invite: string;
   }
   export interface JoinedMatch {
     playerID: string;

@@ -89,7 +89,7 @@ export const getFirstAvailablePlayerID = (
   const numPlayers = getNumPlayers(players);
   // Try to get the first index available
   for (let i = 0; i < numPlayers; i++) {
-    if (typeof players[i].name === 'undefined' || players[i].name === null) {
+    if ((typeof players[i].name === 'undefined' || players[i].name === null) && (typeof players[i].invite === 'undefined' || players[i].invite === null)) {
       return String(i);
     }
   }
