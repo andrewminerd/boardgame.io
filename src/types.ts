@@ -391,6 +391,7 @@ export namespace Server {
   export interface MatchData {
     gameName: string;
     players: { [id: number]: PlayerMetadata };
+    adminCredentials?: string;
     setupData?: any;
     gameover?: any;
     nextMatchID?: string;
@@ -411,7 +412,7 @@ export namespace Server {
 export namespace LobbyAPI {
   export type GameList = string[];
   type PublicPlayerMetadata = Omit<Server.PlayerMetadata, 'credentials'>;
-  export type Match = Omit<Server.MatchData, 'password' | 'players'> & {
+  export type Match = Omit<Server.MatchData, 'adminCredentials' | 'password' | 'players'> & {
     matchID: string;
     password: boolean;
     players: PublicPlayerMetadata[];
@@ -421,6 +422,9 @@ export namespace LobbyAPI {
   }
   export interface CreatedMatch {
     matchID: string;
+    adminCredentials: string;
+    playerID?: string;
+    playerCredentials?: string;
   }
   export interface JoinedMatch {
     playerID: string;

@@ -59,8 +59,9 @@ const createClientMatchData = (
   matchID: string,
   metadata: Server.MatchData
 ): LobbyAPI.Match => {
+  const { password, adminCredentials, ...strippedMedata } = metadata;
   return {
-    ...metadata,
+    ...strippedMedata,
     password: !!metadata.password,
     matchID,
     players: Object.values(metadata.players).map((player) => {
@@ -120,6 +121,12 @@ export const configureRouter = ({
     const password = ctx.request.body.password;
     // The number of players for this game instance.
     const numPlayers = Number.parseInt(ctx.request.body.numPlayers);
+    // If truthy, joins the newly created game.
+    const join = ctx.request.body.join;
+    // Our name, if joining the game.
+    const playerName = ctx.request.body.playerName;
+    // Our data, if joining the game.
+    const playerData = ctx.request.body.playerData;
 
     const game = games.find((g) => g.name === gameName);
     if (!game) ctx.throw(404, 'Game ' + gameName + ' not found');
@@ -133,18 +140,38 @@ export const configureRouter = ({
       ctx.throw(400, 'Invalid numPlayers');
     }
 
-    const matchID = await CreateMatch({
-      ctx,
-      db,
+    const adminCredentials = await auth.generateCredentials(ctx);
+    const matchID = uuid();
+    const match = createMatch({
       game,
       numPlayers,
+      adminCredentials,
       setupData,
-      uuid,
       unlisted,
-      password,
+      password
     });
 
-    const body: LobbyAPI.CreatedMatch = { matchID };
+    if ('setupDataError' in match) {
+      ctx.throw(400, match.setupDataError);
+      return;
+    }
+
+    let playerID = null;
+    let playerCredentials = null;
+    if (join) {
+      playerID = getFirstAvailablePlayerID(match.metadata.players);
+      playerCredentials = auth.generateCredentials(ctx);
+
+      match.metadata.players[playerID].name = playerName;
+      match.metadata.players[playerID].credentials = playerCredentials;
+      if (playerData) {
+        match.metadata.players[playerID].data = playerData;
+      }
+    }
+
+    await db.createMatch(matchID, match);
+
+    const body: LobbyAPI.CreatedMatch = { matchID, adminCredentials, playerID, playerCredentials };
     ctx.body = body;
   });
 
@@ -327,6 +354,65 @@ export const configureRouter = ({
     await (hasPlayers
       ? db.setMetadata(matchID, metadata) // Update metadata.
       : db.wipe(matchID)); // Delete match.
+    ctx.body = {};
+  });
+
+  router.post('/games/:name/:id/kick', koaBody(), async (ctx) => {
+    const matchID = ctx.params.id;
+    const playerID = ctx.request.body.playerID;
+    const cred = ctx.request.body.credentials;
+
+    if (typeof cred === 'undefined' || cred === null) {
+      ctx.throw(400, 'credentials is required');
+    }
+    if (typeof playerID === 'undefined' || playerID === null) {
+      ctx.throw(400, 'playerID is required');
+    }
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+    if (!metadata.players[playerID] || !metadata.players[playerID].credentials) {
+      ctx.throw(400, 'Player ' + playerID + ' not found');
+    }
+    if (!metadata.adminCredentials || cred !== metadata.adminCredentials) {
+      ctx.throw(401, 'Invalid credentials');
+    }
+
+    // clean up player
+    delete metadata.players[playerID].name;
+    delete metadata.players[playerID].credentials;
+
+    const hasPlayers = Object.values(metadata.players).some(({ name }) => name);
+    await hasPlayers
+      ? db.setMetadata(matchID, metadata)
+      : db.wipe(matchID);
+
+    ctx.body = {};
+  });
+
+  router.post('/games/:name/:id/delete', koaBody(), async (ctx) => {
+    const matchID = ctx.params.id;
+    const cred = ctx.request.body.credentials;
+
+    if (typeof cred === "undefined" || cred === null) {
+      ctx.throw(400, 'Credentials are required');
+    }
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+    if (!metadata.adminCredentials || cred !== metadata.adminCredentials) {
+      ctx.throw(401, 'Invalid credentials');
+    }
+
+    db.wipe(matchID);
     ctx.body = {};
   });
 

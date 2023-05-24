@@ -10,15 +10,18 @@ export const createMetadata = ({
   setupData,
   numPlayers,
   password,
+  adminCredentials,
 }: {
   game: Game;
   numPlayers: number;
+  adminCredentials?: string;
   setupData?: any;
   unlisted?: boolean;
   password?: string;
 }): Server.MatchData => {
   const metadata: Server.MatchData = {
     gameName: game.name,
+    adminCredentials,
     unlisted: !!unlisted,
     password: password,
     players: {},
@@ -46,12 +49,14 @@ export const createMatch = ({
   setupData,
   unlisted,
   password,
+  adminCredentials,
 }: {
   game: Game;
   numPlayers: number;
   setupData: any;
   unlisted: boolean;
   password?: string;
+  adminCredentials?: string;
 }):
   | { metadata: Server.MatchData; initialState: State }
   | { setupDataError: string } => {
@@ -64,6 +69,7 @@ export const createMatch = ({
   const metadata = createMetadata({
     game,
     numPlayers,
+    adminCredentials,
     setupData,
     unlisted,
     password,
