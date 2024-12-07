@@ -278,7 +278,7 @@ export const configureRouter = ({
     if (!metadata) {
       ctx.throw(404, 'Match ' + matchID + ' not found');
     }
-
+    // XXX do we still need password if we have an invite link? hmmm
     if (metadata.password && password !== metadata.password) {
       ctx.throw(401, 'Match password is missing or does not match');
     }
@@ -288,17 +288,17 @@ export const configureRouter = ({
       if (playerID === undefined) {
         const numPlayers = getNumPlayers(metadata.players);
         ctx.throw(
-          409,
+          400,
           `Match ${matchID} reached maximum number of players (${numPlayers})`
         );
       }
     }
 
     if (!metadata.players[playerID]) {
-      ctx.throw(404, 'Player ' + playerID + ' not found');
+      ctx.throw(400, 'Player ' + playerID + ' not found');
     }
     if (metadata.players[playerID].name) {
-      ctx.throw(409, 'Player ' + playerID + ' not available');
+      ctx.throw(400, 'Player ' + playerID + ' not available');
     }
     // if game owner has created an invite link, player
     // will be empty (no name) but have credentials
@@ -333,6 +333,9 @@ export const configureRouter = ({
     if (!metadata) {
       ctx.throw(404, 'Match ' + matchID + ' not found');
     }
+    if (!metadata.adminCredentials || credentials !== metadata.adminCredentials) {
+      ctx.throw(401, 'Invalid credentials');
+    }
 
     if (typeof playerID === 'undefined' || playerID === null) {
       playerID = getFirstAvailablePlayerID(metadata.players);
@@ -345,10 +348,10 @@ export const configureRouter = ({
       }
     }
     if (!metadata.players[playerID]) {
-      ctx.throw(404, 'Player ' + playerID + ' not found');
+      ctx.throw(400, 'Player ' + playerID + ' not found');
     }
     if (metadata.players[playerID].name) {
-      ctx.throw(409, 'Player ' + playerID + ' not available');
+      ctx.throw(400, 'Player ' + playerID + ' not available');
     }
 
     // an invite is created by setting credentials on an empty player slot
@@ -425,11 +428,11 @@ export const configureRouter = ({
     if (!metadata) {
       ctx.throw(404, 'Match ' + matchID + ' not found');
     }
-    if (!metadata.players[playerID] || !metadata.players[playerID].credentials) {
-      ctx.throw(400, 'Player ' + playerID + ' not found');
-    }
     if (!metadata.adminCredentials || cred !== metadata.adminCredentials) {
       ctx.throw(401, 'Invalid credentials');
+    }
+    if (!metadata.players[playerID] || !metadata.players[playerID].name) {
+      ctx.throw(400, 'Player ' + playerID + ' not found');
     }
 
     // clean up player
