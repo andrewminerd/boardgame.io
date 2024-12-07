@@ -433,6 +433,10 @@ export namespace LobbyAPI {
   export interface NextMatch {
     nextMatchID: string;
   }
+  export interface Invite {
+    token: string;
+    playerID: string;
+  }
 }
 
 export type Reducer = ReturnType<typeof CreateGameReducer>;

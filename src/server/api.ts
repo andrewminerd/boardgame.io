@@ -267,6 +267,7 @@ export const configureRouter = ({
     const password = ctx.request.body.password;
     const data = ctx.request.body.data;
     const matchID = ctx.params.id;
+    const credentials = ctx.params.credentials;
     if (!playerName) {
       ctx.throw(403, 'playerName is required');
     }
@@ -299,6 +300,14 @@ export const configureRouter = ({
     if (metadata.players[playerID].name) {
       ctx.throw(409, 'Player ' + playerID + ' not available');
     }
+    // if game owner has created an invite link, player
+    // will be empty (no name) but have credentials
+    if (metadata.players[playerID].credentials) {
+      const valid = await auth.authenticateCredentials({playerID, credentials, metadata});
+      if (!valid) {
+        ctx.throw(403, 'Invalid credentials');
+      }
+    }
 
     if (data) {
       metadata.players[playerID].data = data;
@@ -310,6 +319,47 @@ export const configureRouter = ({
     await db.setMetadata(matchID, metadata);
 
     const body: LobbyAPI.JoinedMatch = { playerID, playerCredentials };
+    ctx.body = body;
+  });
+
+  router.post('/games/:name/:id/invite', koaBody(), async(ctx) => {
+    let playerID = ctx.request.body.playerID;
+    const matchID = ctx.params.id;
+    const credentials = ctx.params.credentials;
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+
+    if (typeof playerID === 'undefined' || playerID === null) {
+      playerID = getFirstAvailablePlayerID(metadata.players);
+      if (playerID === undefined) {
+        const numPlayers = getNumPlayers(metadata.players);
+        ctx.throw(
+          409,
+          `Match ${matchID} reached maximum number of players (${numPlayers})`
+        );
+      }
+    }
+    if (!metadata.players[playerID]) {
+      ctx.throw(404, 'Player ' + playerID + ' not found');
+    }
+    if (metadata.players[playerID].name) {
+      ctx.throw(409, 'Player ' + playerID + ' not available');
+    }
+
+    // an invite is created by setting credentials on an empty player slot
+    // these credentials must be given when joining; the credentials for
+    // that player are then regenerated to invalidate the invite link
+    const token = await auth.generateCredentials(ctx);
+    metadata.players[playerID].credentials = token;
+
+    await db.setMetadata(matchID, metadata);
+
+    const body: LobbyAPI.Invite = {token, playerID};
     ctx.body = body;
   });
 
