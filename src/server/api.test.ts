@@ -1207,6 +1207,356 @@ describe('.configureRouter', () => {
     });
   });
 
+  describe('inviting a player', () => {
+    let response;
+    let db: AsyncStorage;
+    const auth = new Auth({
+      generateCredentials: () => "SECRET2",
+    });
+    let games: Game[];
+
+    beforeEach(() => {
+      games = [ProcessGameConfig({ name: 'foo' })];
+    });
+
+    describe('for an unprotected lobby', () => {
+      beforeEach(() => {
+        delete process.env.API_SECRET;
+      });
+
+      describe('when the game does not exist', () => {
+        test('throws a "not found" error', async () => {
+          db = new AsyncStorage({
+            fetch: async () => ({ metadata: null }),
+          });
+          const app = createApiServer({ db, auth, games });
+          response = await request(app.callback())
+            .post('/games/foo/1/invite')
+            .send('playerID=1&credentials=FOO');
+          expect(response.status).toEqual(404);
+        });
+      });
+
+      describe('when the game does exist', () => {
+        beforeEach(async () => {
+          db = new AsyncStorage({
+            fetch: async () => {
+              return {
+                metadata: {
+                  players: {
+                    '0': {
+                      name: 'alice',
+                      credentials: 'SECRET1',
+                    },
+                    '1': {
+                    },
+                    '2': {
+                    },
+                  },
+                },
+              };
+            },
+          });
+        });
+
+        describe('when the playerID does exist', () => {
+          beforeEach(async() => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/invite')
+              .send('playerID=2&credentials=SECRET1');
+          });
+          test('is successful', async () => {
+            expect(response.status).toEqual(200);
+          });
+          test('returns a token', async () => {
+            expect(response.body.token).toBe('SECRET2');
+          });
+          test('updates the players', async () => {
+            expect(db.mocks.setMetadata).toHaveBeenCalledWith(
+              '1',
+              expect.objectContaining({
+                players: expect.objectContaining({
+                  '0': expect.objectContaining({
+                    name: 'alice',
+                    credentials: 'SECRET1',
+                  }),
+                  '1': expect.objectContaining({}),
+                  '2': expect.objectContaining({
+                    credentials: 'SECRET2',
+                  }),
+                }),
+              })
+            );
+          });
+        });
+
+        describe('when the playerID does not exist', () => {
+          test('throws error 400', async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/invite')
+              .send('playerID=3&credentials=SECRET1');
+            expect(response.status).toEqual(400);
+          });
+        });
+
+        describe('when the credentials are invalid', () => {
+          test('throws error 401', async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/invite')
+              .send('playerID=1&credentials=FOO');
+            expect(response.status).toEqual(401);
+          });
+        });
+
+        describe('when playerID is omitted', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/invite')
+              .send('credentials=SECRET1');
+          });
+          test('returns 200', async () => {
+            expect(response.status).toEqual(200);
+          });
+          test('returns a player ID', async () => {
+            expect(response.body.playerID).toBe('1');
+          });
+          test('returns a token', async () => {
+            expect(response.body.token).toBe('SECRET2');
+          });
+          test('updates the players', async () => {
+            expect(db.mocks.setMetadata).toHaveBeenCalledWith(
+              '1',
+              expect.objectContaining({
+                players: expect.objectContaining({
+                  '0': expect.objectContaining({
+                    name: 'alice',
+                    credentials: 'SECRET1',
+                  }),
+                  '1': expect.objectContaining({
+                    credentials: 'SECRET2'
+                  }),
+                  '2': expect.objectContaining({}),
+                }),
+              })
+            );
+          });
+        });
+      });
+    });
+  });
+
+  describe('kicking a player', () => {
+    let response;
+    let db: AsyncStorage;
+    const auth = new Auth();
+    let games: Game[];
+
+    beforeEach(() => {
+      games = [ProcessGameConfig({ name: 'foo' })];
+    });
+
+    describe('for an unprotected lobby', () => {
+      beforeEach(() => {
+        delete process.env.API_SECRET;
+      });
+
+      describe('when the game does not exist', () => {
+        test('throws a "not found" error', async () => {
+          db = new AsyncStorage({
+            fetch: async () => ({ metadata: null }),
+          });
+          const app = createApiServer({ db, auth, games });
+          response = await request(app.callback())
+            .post('/games/foo/1/kick')
+            .send('playerID=0&credentials=FOO');
+          expect(response.status).toEqual(404);
+        });
+      });
+
+      describe('when the game does exist', () => {
+        beforeEach(async () => {
+          db = new AsyncStorage({
+            fetch: async () => {
+              return {
+                metadata: {
+                  players: {
+                    '0': {
+                      name: 'alice',
+                      credentials: 'SECRET1',
+                    },
+                    '1': {
+                      name: 'bob',
+                      credentials: 'SECRET2',
+                    },
+                  },
+                },
+              };
+            },
+          });
+        });
+
+        describe('when the playerID does exist', () => {
+          beforeEach(async() => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/kick')
+              .send('playerID=1&credentials=SECRET1');
+          });
+
+          test('is successful', async () => {
+            expect(response.status).toEqual(200);
+          });
+
+          test('updates the players', async () => {
+            expect(db.mocks.setMetadata).toHaveBeenCalledWith(
+              '1',
+              expect.objectContaining({
+                players: expect.objectContaining({
+                  '0': expect.objectContaining({
+                    name: 'alice',
+                    credentials: 'SECRET1',
+                  }),
+                  '1': expect.objectContaining({}),
+                }),
+              })
+            );
+          });
+        });
+
+        describe('when the playerID does not exist', () => {
+          test('throws error 400', async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/kick')
+              .send('playerID=2&credentials=SECRET1');
+            expect(response.status).toEqual(400);
+          });
+        });
+
+        describe('when the credentials are invalid', () => {
+          test('throws error 401', async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/kick')
+              .send('playerID=1&credentials=FOO');
+            expect(response.status).toEqual(401);
+          });
+        });
+        describe('when playerID is omitted', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/kick')
+              .send('credentials=foo');
+          });
+
+          test('throws error 400', async () => {
+            expect(response.status).toEqual(400);
+          });
+        });
+      });
+    });
+  });
+
+  describe('deleting a room', () => {
+    let response;
+    let db: AsyncStorage;
+    const auth = new Auth();
+    let games: Game[];
+
+    beforeEach(() => {
+      games = [ProcessGameConfig({ name: 'foo' })];
+    });
+
+    describe('for an unprotected lobby', () => {
+      beforeEach(() => {
+        delete process.env.API_SECRET;
+      });
+
+      describe('when the game does not exist', () => {
+        test('throws a "not found" error', async () => {
+          db = new AsyncStorage({
+            fetch: async () => ({ metadata: null }),
+          });
+          const app = createApiServer({ db, auth, games });
+          response = await request(app.callback())
+            .post('/games/foo/1/delete')
+            .send('credentials=FOO');
+          expect(response.status).toEqual(404);
+        });
+      });
+
+      describe('when the game does exist', () => {
+        beforeEach(async () => {
+          db = new AsyncStorage({
+            fetch: async () => {
+              return {
+                metadata: {
+                  players: {
+                    '0': {
+                      name: 'alice',
+                      credentials: 'SECRET1',
+                    },
+                    '1': {
+                      name: 'bob',
+                      credentials: 'SECRET2',
+                    },
+                  },
+                },
+              };
+            },
+          });
+        });
+
+        describe('with the correct credentials', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/delete')
+              .send('credentials=SECRET1');
+          });
+          test('is successful', async () => {
+            expect(response.status).toEqual(200);
+          });
+          test('deletes the match', async () => {
+            expect(db.mocks.wipe).toHaveBeenCalledWith('1');
+          });
+        });
+
+        describe('with incorrect credentials', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/delete')
+              .send('credentials=FOO1');
+          });
+          test('throws error 401', async () => {
+            expect(response.status).toEqual(401);
+          });
+          test('does not delete the match', async () => {
+            expect(db.mocks.wipe).toHaveBeenCalledTimes(0);
+          });
+        });
+
+        describe('when credentials are omitted', () => {
+          beforeEach(async () => {
+            const app = createApiServer({ db, auth, games });
+            response = await request(app.callback())
+              .post('/games/foo/1/leave')
+              .send('');
+          });
+          test('throws error 401', async () => {
+            expect(response.status).toEqual(403);
+          });
+        });
+      });
+    });
+  });
+
   describe('requesting game list', () => {
     let db: AsyncStorage;
     const auth = new Auth();
