@@ -235,6 +235,7 @@ export class LobbyClient {
       playerID?: string;
       playerName: string;
       data?: any;
+      credentials?: any,
       [key: string]: any;
     },
     init?: RequestInit
@@ -244,6 +245,7 @@ export class LobbyClient {
     validateBody(body, {
       playerID: ['string', 'undefined'],
       playerName: 'string',
+      credentials: ['string', 'undefined'],
     });
     return this.post(`/games/${gameName}/${matchID}/join`, { body, init });
   }
