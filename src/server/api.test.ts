@@ -597,6 +597,91 @@ describe('.configureRouter', () => {
             expect(response.status).toEqual(409);
           });
         });
+
+        describe('when the playerID is invited', () => {
+          beforeEach(async () => {
+            db = new AsyncStorage({
+              fetch: async () => {
+                return {
+                  metadata: {
+                    players: {
+                      '0': {
+                        credentials: 'INVITE',
+                      },
+                    },
+                  },
+                };
+              },
+            });
+          });
+          describe('with the correct invite', () => {
+            beforeEach(async() => {
+              const app = createApiServer({
+                db,
+                auth: new Auth({generateCredentials: () => 'SECRET'}),
+                games
+              });
+              response = await request(app.callback())
+                .post('/games/foo/1/join')
+                .send('playerID=0&playerName=alice&credentials=INVITE');
+            });
+            test('is successful', async() => {
+              expect(response.status).toEqual(200);
+            });
+            test('updates the players', async() => {
+              expect(db.mocks.setMetadata).toHaveBeenCalledWith(
+                '1',
+                expect.objectContaining({
+                  players: expect.objectContaining({
+                    '0': expect.objectContaining({
+                      name: 'alice',
+                      credentials: 'SECRET',
+                    }),
+                  })
+                }),
+              );
+            });
+          });
+          describe('without playerID', () => {
+            beforeEach(async() => {
+              const app = createApiServer({
+                db,
+                auth: new Auth({generateCredentials: () => 'SECRET'}),
+                games
+              });
+              response = await request(app.callback())
+                .post('/games/foo/1/join')
+                .send('playerName=alice&credentials=INVITE');
+            });
+            test('is successful', async() => {
+              expect(response.status).toEqual(200);
+            });
+            test('updates the players', async() => {
+              expect(db.mocks.setMetadata).toHaveBeenCalledWith(
+                '1',
+                expect.objectContaining({
+                  players: expect.objectContaining({
+                    '0': expect.objectContaining({
+                      name: 'alice',
+                      credentials: 'SECRET',
+                    }),
+                  })
+                }),
+              );
+            });
+          });
+          describe('with an incorrect invite', () => {
+            beforeEach(async() => {
+              const app = createApiServer({ db, auth, games });
+              response = await request(app.callback())
+                .post('/games/foo/1/join')
+                .send('playerID=0&playerName=alice&credentials=WRONG');
+            });
+            test('throws error 403', async() => {
+              expect(response.status).toEqual(403);
+            });
+          });
+        });
       });
 
       describe('when the game has a password', () => {

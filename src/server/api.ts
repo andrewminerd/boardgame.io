@@ -265,9 +265,9 @@ export const configureRouter = ({
     let playerID = ctx.request.body.playerID;
     const playerName = ctx.request.body.playerName;
     const password = ctx.request.body.password;
+    const credentials = ctx.request.body.credentials;
     const data = ctx.request.body.data;
     const matchID = ctx.params.id;
-    const credentials = ctx.params.credentials;
     if (!playerName) {
       ctx.throw(403, 'playerName is required');
     }
