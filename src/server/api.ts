@@ -16,6 +16,8 @@ import { createMatch, getFirstAvailablePlayerID, getNumPlayers } from './util';
 import type { Auth } from './auth';
 import type { Server, LobbyAPI, Game, StorageAPI } from '../types';
 
+const ADMIN_PLAYER_ID = '0';
+
 /**
  * Creates a new match.
  *
@@ -323,7 +325,7 @@ export const configureRouter = ({
   router.post('/games/:name/:id/invite', koaBody(), async(ctx) => {
     let playerID = ctx.request.body.playerID;
     const matchID = ctx.params.id;
-    const credentials = ctx.params.credentials;
+    const credentials = ctx.request.body.credentials;
 
     const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
       metadata: true,
@@ -343,13 +345,13 @@ export const configureRouter = ({
       }
     }
     if (!metadata.players[playerID]) {
-      ctx.throw(404, 'Player ' + playerID + ' not found');
+      ctx.throw(400, 'Player ' + playerID + ' not found');
     }
     if (metadata.players[playerID].name) {
-      ctx.throw(409, 'Player ' + playerID + ' not available');
+      ctx.throw(400, 'Player ' + playerID + ' not available');
     }
-    if (!metadata.players['0'].name
-      || !auth.authenticateCredentials({playerID: '0', credentials, metadata})
+    if (!metadata.players[ADMIN_PLAYER_ID].name
+      || !auth.authenticateCredentials({playerID: ADMIN_PLAYER_ID, credentials, metadata})
     ) {
       ctx.throw(401, 'Invalid credentials');
     }
@@ -428,11 +430,14 @@ export const configureRouter = ({
     if (!metadata) {
       ctx.throw(404, 'Match ' + matchID + ' not found');
     }
+    if (playerID === ADMIN_PLAYER_ID) {
+      ctx.throw(400, 'Cannot kick owner');
+    }
     if (!metadata.players[playerID] || !metadata.players[playerID].credentials) {
       ctx.throw(400, 'Player ' + playerID + ' not found');
     }
-    if (!metadata.players['0'].name
-      || !auth.authenticateCredentials({playerID: '0', credentials, metadata})
+    if (!metadata.players[ADMIN_PLAYER_ID].name
+      || !auth.authenticateCredentials({playerID: ADMIN_PLAYER_ID, credentials, metadata})
     ) {
       ctx.throw(401, 'Invalid credentials');
     }
@@ -454,7 +459,7 @@ export const configureRouter = ({
     const credentials = ctx.request.body.credentials;
 
     if (typeof credentials === "undefined" || credentials === null) {
-      ctx.throw(400, 'Credentials are required');
+      ctx.throw(401, 'Credentials are required');
     }
 
     const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
@@ -463,8 +468,8 @@ export const configureRouter = ({
     if (!metadata) {
       ctx.throw(404, 'Match ' + matchID + ' not found');
     }
-    if (!metadata.players['0'].name
-      || !auth.authenticateCredentials({playerID: '0', credentials, metadata})
+    if (!metadata.players[ADMIN_PLAYER_ID].name
+      || !auth.authenticateCredentials({playerID: ADMIN_PLAYER_ID, credentials, metadata})
     ) {
       ctx.throw(401, 'Invalid credentials');
     }

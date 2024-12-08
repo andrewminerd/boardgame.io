@@ -355,4 +355,48 @@ export class LobbyClient {
     validateBody(body, { playerID: 'string', credentials: 'string' });
     return this.post(`/games/${gameName}/${matchID}/playAgain`, { body, init });
   }
+
+  async invite(
+    gameName: string,
+    matchID: string,
+    body: {
+      credentials: string,
+      playerID?: string
+    },
+    init?: RequestInit
+  ): Promise<LobbyAPI.Invite> {
+    assertGameName(gameName);
+    assertMatchID(matchID);
+    validateBody(body, {playerID: ['string', 'undefined'], credentials: 'string'});
+    return this.post(`/games/${gameName}/${matchID}/invite`, {body, init});
+  }
+
+  async kick(
+    gameName: string,
+    matchID: string,
+    body: {
+      credentials: string,
+      playerID: string
+    },
+    init?: RequestInit
+  ): Promise<void> {
+    assertGameName(gameName);
+    assertMatchID(matchID);
+    validateBody(body, {playerID: 'string', credentials: 'string'});
+    await this.post(`/games/${gameName}/${matchID}/kick`, {body, init});
+  }
+
+  async delete(
+    gameName: string,
+    matchID: string,
+    body: {
+      credentials: string,
+    },
+    init?: RequestInit
+  ): Promise<void> {
+    assertGameName(gameName);
+    assertMatchID(matchID);
+    validateBody(body, {credentials: 'string'});
+    await this.post(`/games/${gameName}/${matchID}/delete`, {body, init});
+  }
 }
