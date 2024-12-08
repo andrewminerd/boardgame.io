@@ -421,6 +421,8 @@ export namespace LobbyAPI {
   }
   export interface CreatedMatch {
     matchID: string;
+    playerID?: string;
+    playerCredentials?: string;
   }
   export interface JoinedMatch {
     playerID: string;
@@ -428,6 +430,10 @@ export namespace LobbyAPI {
   }
   export interface NextMatch {
     nextMatchID: string;
+  }
+  export interface Invite {
+    token: string;
+    playerID: string;
   }
 }
 

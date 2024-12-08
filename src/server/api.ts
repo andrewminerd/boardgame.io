@@ -59,8 +59,9 @@ const createClientMatchData = (
   matchID: string,
   metadata: Server.MatchData
 ): LobbyAPI.Match => {
+  const { password, ...strippedMedata } = metadata;
   return {
-    ...metadata,
+    ...strippedMedata,
     password: !!metadata.password,
     matchID,
     players: Object.values(metadata.players).map((player) => {
@@ -120,6 +121,12 @@ export const configureRouter = ({
     const password = ctx.request.body.password;
     // The number of players for this game instance.
     const numPlayers = Number.parseInt(ctx.request.body.numPlayers);
+    // If truthy, joins the newly created game.
+    const join = ctx.request.body.join;
+    // Our name, if joining the game.
+    const playerName = ctx.request.body.playerName;
+    // Our data, if joining the game.
+    const playerData = ctx.request.body.playerData;
 
     const game = games.find((g) => g.name === gameName);
     if (!game) ctx.throw(404, 'Game ' + gameName + ' not found');
@@ -133,18 +140,36 @@ export const configureRouter = ({
       ctx.throw(400, 'Invalid numPlayers');
     }
 
-    const matchID = await CreateMatch({
-      ctx,
-      db,
+    const matchID = uuid();
+    const match = createMatch({
       game,
       numPlayers,
       setupData,
-      uuid,
       unlisted,
-      password,
+      password
     });
 
-    const body: LobbyAPI.CreatedMatch = { matchID };
+    if ('setupDataError' in match) {
+      ctx.throw(400, match.setupDataError);
+      return;
+    }
+
+    let playerID = null;
+    let playerCredentials = null;
+    if (join) {
+      playerID = getFirstAvailablePlayerID(match.metadata.players);
+      playerCredentials = auth.generateCredentials(ctx);
+
+      match.metadata.players[playerID].name = playerName;
+      match.metadata.players[playerID].credentials = playerCredentials;
+      if (playerData) {
+        match.metadata.players[playerID].data = playerData;
+      }
+    }
+
+    await db.createMatch(matchID, match);
+
+    const body: LobbyAPI.CreatedMatch = { matchID, playerID, playerCredentials };
     ctx.body = body;
   });
 
@@ -240,6 +265,7 @@ export const configureRouter = ({
     const password = ctx.request.body.password;
     const data = ctx.request.body.data;
     const matchID = ctx.params.id;
+    const credentials = ctx.params.credentials;
     if (!playerName) {
       ctx.throw(403, 'playerName is required');
     }
@@ -272,6 +298,14 @@ export const configureRouter = ({
     if (metadata.players[playerID].name) {
       ctx.throw(409, 'Player ' + playerID + ' not available');
     }
+    // if game owner has created an invite link, player
+    // will be empty (no name) but have credentials
+    if (metadata.players[playerID].credentials) {
+      const valid = await auth.authenticateCredentials({playerID, credentials, metadata});
+      if (!valid) {
+        ctx.throw(403, 'Invalid credentials');
+      }
+    }
 
     if (data) {
       metadata.players[playerID].data = data;
@@ -283,6 +317,52 @@ export const configureRouter = ({
     await db.setMetadata(matchID, metadata);
 
     const body: LobbyAPI.JoinedMatch = { playerID, playerCredentials };
+    ctx.body = body;
+  });
+
+  router.post('/games/:name/:id/invite', koaBody(), async(ctx) => {
+    let playerID = ctx.request.body.playerID;
+    const matchID = ctx.params.id;
+    const credentials = ctx.params.credentials;
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+
+    if (typeof playerID === 'undefined' || playerID === null) {
+      playerID = getFirstAvailablePlayerID(metadata.players);
+      if (playerID === undefined) {
+        const numPlayers = getNumPlayers(metadata.players);
+        ctx.throw(
+          409,
+          `Match ${matchID} reached maximum number of players (${numPlayers})`
+        );
+      }
+    }
+    if (!metadata.players[playerID]) {
+      ctx.throw(404, 'Player ' + playerID + ' not found');
+    }
+    if (metadata.players[playerID].name) {
+      ctx.throw(409, 'Player ' + playerID + ' not available');
+    }
+    if (!metadata.players['0'].name
+      || !auth.authenticateCredentials({playerID: '0', credentials, metadata})
+    ) {
+      ctx.throw(401, 'Invalid credentials');
+    }
+
+    // an invite is created by setting credentials on an empty player slot
+    // these credentials must be given when joining; the credentials for
+    // that player are then regenerated to invalidate the invite link
+    const token = await auth.generateCredentials(ctx);
+    metadata.players[playerID].credentials = token;
+
+    await db.setMetadata(matchID, metadata);
+
+    const body: LobbyAPI.Invite = {token, playerID};
     ctx.body = body;
   });
 
@@ -327,6 +407,69 @@ export const configureRouter = ({
     await (hasPlayers
       ? db.setMetadata(matchID, metadata) // Update metadata.
       : db.wipe(matchID)); // Delete match.
+    ctx.body = {};
+  });
+
+  router.post('/games/:name/:id/kick', koaBody(), async (ctx) => {
+    const matchID = ctx.params.id;
+    const playerID = ctx.request.body.playerID;
+    const credentials = ctx.request.body.credentials;
+
+    if (typeof credentials === 'undefined' || credentials === null) {
+      ctx.throw(400, 'credentials is required');
+    }
+    if (typeof playerID === 'undefined' || playerID === null) {
+      ctx.throw(400, 'playerID is required');
+    }
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+    if (!metadata.players[playerID] || !metadata.players[playerID].credentials) {
+      ctx.throw(400, 'Player ' + playerID + ' not found');
+    }
+    if (!metadata.players['0'].name
+      || !auth.authenticateCredentials({playerID: '0', credentials, metadata})
+    ) {
+      ctx.throw(401, 'Invalid credentials');
+    }
+
+    // clean up player
+    delete metadata.players[playerID].name;
+    delete metadata.players[playerID].credentials;
+
+    const hasPlayers = Object.values(metadata.players).some(({ name }) => name);
+    await hasPlayers
+      ? db.setMetadata(matchID, metadata)
+      : db.wipe(matchID);
+
+    ctx.body = {};
+  });
+
+  router.post('/games/:name/:id/delete', koaBody(), async (ctx) => {
+    const matchID = ctx.params.id;
+    const credentials = ctx.request.body.credentials;
+
+    if (typeof credentials === "undefined" || credentials === null) {
+      ctx.throw(400, 'Credentials are required');
+    }
+
+    const { metadata } = await (db as StorageAPI.Async).fetch(matchID, {
+      metadata: true,
+    });
+    if (!metadata) {
+      ctx.throw(404, 'Match ' + matchID + ' not found');
+    }
+    if (!metadata.players['0'].name
+      || !auth.authenticateCredentials({playerID: '0', credentials, metadata})
+    ) {
+      ctx.throw(401, 'Invalid credentials');
+    }
+
+    db.wipe(matchID);
     ctx.body = {};
   });
 
